@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "367928943371",
+    "project_id": "pertin-93a59",
+    "storage_bucket": "pertin-93a59.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:367928943371:android:f82ee3f600cb882ed9380e",
+        "android_client_info": {
+          "package_name": "pertin.banco"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBixP4uJWCdxpsaQYmLmb6i4Np6lawZ4Xk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
