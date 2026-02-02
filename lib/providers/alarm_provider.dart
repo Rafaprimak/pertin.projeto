@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, ChangeNotifier;
 import 'package:geolocator/geolocator.dart';
 import 'package:pertin/models/trip.dart';
 import 'package:pertin/services/alarm_service.dart';
 import 'package:pertin/services/location_service.dart';
+import 'package:pertin/services/web_platform_service.dart' if (dart.library.io) 'package:pertin/services/web_platform_service_stub.dart';
 
 class AlarmProvider extends ChangeNotifier {
   bool _isTracking = false;
@@ -29,6 +30,12 @@ class AlarmProvider extends ChangeNotifier {
     _targetTrip = trip;
     _isTracking = true;
     notifyListeners();
+
+    // Na web, ativa o Wake Lock para manter a tela ligada
+    if (kIsWeb) {
+      await WebPlatformService.instance.requestWakeLock();
+      WebPlatformService.instance.startKeepAlive();
+    }
 
     LocationService.instance.startLocationTracking(
       onPositionUpdate: _onPositionUpdate,
@@ -73,6 +80,13 @@ class AlarmProvider extends ChangeNotifier {
     _targetTrip = null;
     _distanceToDestination = 0;
     LocationService.instance.stopLocationTracking();
+    
+    // Na web, libera o Wake Lock
+    if (kIsWeb) {
+      WebPlatformService.instance.releaseWakeLock();
+      WebPlatformService.instance.stopKeepAlive();
+    }
+    
     notifyListeners();
   }
 

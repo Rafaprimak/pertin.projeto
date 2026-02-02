@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pertin/providers/alarm_provider.dart';
 import 'package:pertin/providers/trip_provider.dart';
 import 'package:pertin/screens/alarm_screen.dart';
@@ -7,6 +9,7 @@ import 'package:pertin/screens/add_expense_screen.dart';
 import 'package:pertin/widgets/starry_sky_background.dart';
 import 'package:pertin/widgets/sleepy_bus_logo.dart';
 import 'package:pertin/widgets/common_widgets.dart';
+import 'package:pertin/widgets/web_platform_warning.dart';
 import 'package:pertin/theme/app_colors.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as math;
@@ -22,6 +25,13 @@ class _TrackingScreenState extends State<TrackingScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  
+  // Modo economia de bateria para iOS/Web (escurece a tela)
+  bool _batterySaverMode = false;
+  // Modo bolso - tela completamente preta, precisa segurar para sair
+  bool _pocketMode = false;
+  bool _holdingToExit = false;
+  double _holdProgress = 0.0;
 
   @override
   void initState() {
@@ -38,7 +48,158 @@ class _TrackingScreenState extends State<TrackingScreen>
     // Check for alarm trigger
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAlarm();
+      // Mostra tutorial do modo bolso na primeira vez (apenas para web/iOS)
+      if (kIsWeb) {
+        _showPocketModeTutorialIfNeeded();
+      }
     });
+  }
+
+  Future<void> _showPocketModeTutorialIfNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenTutorial = prefs.getBool('has_seen_pocket_mode_tutorial') ?? false;
+    
+    if (!hasSeenTutorial && mounted) {
+      await _showPocketModeTutorial();
+      await prefs.setBool('has_seen_pocket_mode_tutorial', true);
+    }
+  }
+
+  Future<void> _showPocketModeTutorial() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Row(
+          children: [
+            Icon(Icons.tips_and_updates, color: Colors.amber, size: 28),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Dica Importante!',
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Para usar o app no iPhone sem gastar muita bateria e sem toques acidentais:',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              
+              // Modo Bolso
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.deepPurple.withOpacity(0.3)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.back_hand, color: Colors.deepPurple, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Modo Bolso',
+                          style: TextStyle(
+                            color: Colors.deepPurple,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      '• Tela 100% preta\n• Ignora toques acidentais\n• Segure 2 segundos para sair\n• O alarme toca normalmente!',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Acesso Guiado
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.phonelink_lock, color: Colors.blue, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Acesso Guiado (iOS)',
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Para economia máxima de bateria:\n\n1. Ajustes → Acessibilidade → Acesso Guiado → Ativar\n2. Com o app aberto, clique 3x no botão lateral\n3. Toque em "Iniciar"\n\nIsso bloqueia todos os botões e desativa a tela!',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.battery_charging_full, color: Colors.amber, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Dica: Conecte o carregador durante viagens longas!',
+                        style: TextStyle(color: Colors.amber, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.babyBlue,
+              foregroundColor: AppColors.midnightBlue,
+            ),
+            child: const Text('Entendi!'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _checkAlarm() {
@@ -49,9 +210,40 @@ class _TrackingScreenState extends State<TrackingScreen>
   void _onAlarmStatusChanged() {
     final alarmProvider = context.read<AlarmProvider>();
     if (alarmProvider.isAlarmActive && mounted) {
+      // Sai do modo bolso/economia se o alarme disparar
+      if (_pocketMode || _batterySaverMode) {
+        setState(() {
+          _pocketMode = false;
+          _batterySaverMode = false;
+        });
+      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const AlarmScreen()),
       );
+    }
+  }
+
+  void _startHoldTimer() async {
+    const totalDuration = Duration(seconds: 2);
+    const updateInterval = Duration(milliseconds: 50);
+    final steps = totalDuration.inMilliseconds / updateInterval.inMilliseconds;
+    
+    for (int i = 0; i <= steps && _holdingToExit; i++) {
+      await Future.delayed(updateInterval);
+      if (!_holdingToExit || !mounted) return;
+      
+      setState(() {
+        _holdProgress = i / steps;
+      });
+      
+      if (_holdProgress >= 1.0) {
+        setState(() {
+          _pocketMode = false;
+          _holdProgress = 0.0;
+          _holdingToExit = false;
+        });
+        return;
+      }
     }
   }
 
@@ -94,6 +286,168 @@ class _TrackingScreenState extends State<TrackingScreen>
 
   @override
   Widget build(BuildContext context) {
+    // MODO BOLSO - tela completamente preta, ignora toques
+    // Precisa SEGURAR por 3 segundos para sair
+    if (_pocketMode) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: GestureDetector(
+          onLongPressStart: (_) {
+            setState(() => _holdingToExit = true);
+            _startHoldTimer();
+          },
+          onLongPressEnd: (_) {
+            setState(() {
+              _holdingToExit = false;
+              _holdProgress = 0.0;
+            });
+          },
+          child: Consumer<AlarmProvider>(
+            builder: (context, alarmProvider, child) {
+              return Container(
+                color: Colors.black,
+                width: double.infinity,
+                height: double.infinity,
+                child: Center(
+                  child: AnimatedOpacity(
+                    opacity: _holdingToExit ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            SizedBox(
+                              width: 100,
+                              height: 100,
+                              child: CircularProgressIndicator(
+                                value: _holdProgress,
+                                strokeWidth: 8,
+                                backgroundColor: Colors.white24,
+                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.lock_open,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          _holdProgress >= 1.0 ? 'Solte para sair' : 'Segure para desbloquear',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 48),
+                        Text(
+                          '${(alarmProvider.distanceToDestination / 1000).toStringAsFixed(1)} km restantes',
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    // Modo economia de bateria - tela escura com informações mínimas
+    if (_batterySaverMode) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: GestureDetector(
+          onTap: () => setState(() => _batterySaverMode = false),
+          child: SafeArea(
+            child: Consumer<AlarmProvider>(
+              builder: (context, alarmProvider, child) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.battery_saver,
+                        color: Colors.green,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Modo Economia de Bateria',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '${(alarmProvider.distanceToDestination / 1000).toStringAsFixed(1)} km',
+                        style: const TextStyle(
+                          color: Colors.green,
+                          fontSize: 48,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Text(
+                        'até o destino',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.notifications_active,
+                              color: Colors.amber,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Alarme em ${alarmProvider.alertRadius.toInt()}m',
+                              style: const TextStyle(
+                                color: Colors.amber,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 48),
+                      const Text(
+                        'Toque na tela para voltar',
+                        style: TextStyle(
+                          color: Colors.white38,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       body: StarrySkyBackground(
         child: SafeArea(
@@ -108,6 +462,8 @@ class _TrackingScreenState extends State<TrackingScreen>
 
               return Column(
                 children: [
+                  // Banner de aviso para usuários web
+                  if (kIsWeb) const WebTrackingBanner(),
                   _buildAppBar(),
                   Expanded(
                     child: SingleChildScrollView(
@@ -122,6 +478,11 @@ class _TrackingScreenState extends State<TrackingScreen>
                           _buildExpensesCard(trip),
                           const SizedBox(height: 24),
                           _buildSleepModeCard(),
+                          // Botão economia de bateria apenas para iOS/Web
+                          if (kIsWeb) ...[
+                            const SizedBox(height: 16),
+                            _buildBatterySaverButton(),
+                          ],
                           const SizedBox(height: 24),
                           _buildCancelButton(),
                         ],
@@ -425,6 +786,204 @@ class _TrackingScreenState extends State<TrackingScreen>
         backgroundColor: AppColors.error,
         foregroundColor: AppColors.midnightBlue,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _buildBatterySaverButton() {
+    return GlassCard(
+      child: Column(
+        children: [
+          // Modo Bolso (recomendado)
+          InkWell(
+            onTap: () => _showPocketModeDialog(),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.back_hand,
+                      color: Colors.deepPurple,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'Modo Bolso',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Recomendado',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Tela preta, ignora toques. Segure 2s para sair.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary.withOpacity(0.8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_ios,
+                    color: AppColors.textSecondary,
+                    size: 16,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Divider(height: 1, color: Colors.white.withOpacity(0.1)),
+          // Modo Economia Simples
+          InkWell(
+            onTap: () => setState(() => _batterySaverMode = true),
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.battery_saver,
+                      color: Colors.green,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Modo Economia',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Tela escura com distância visível',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary.withOpacity(0.8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_ios,
+                    color: AppColors.textSecondary,
+                    size: 16,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPocketModeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Row(
+          children: [
+            Icon(Icons.back_hand, color: Colors.deepPurple),
+            SizedBox(width: 12),
+            Text('Modo Bolso', style: TextStyle(color: AppColors.textPrimary)),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'A tela ficará completamente preta e não responderá a toques acidentais.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            SizedBox(height: 16),
+            Text(
+              '📱 Coloque o celular no bolso ou virado para baixo',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+            ),
+            SizedBox(height: 8),
+            Text(
+              '🔔 O alarme vai tocar normalmente quando chegar',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+            ),
+            SizedBox(height: 8),
+            Text(
+              '🔓 Para sair: segure a tela por 2 segundos',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+            ),
+            SizedBox(height: 16),
+            Text(
+              '💡 Dica: Use o "Acesso Guiado" do iOS para economia máxima de bateria (Ajustes > Acessibilidade > Acesso Guiado)',
+              style: TextStyle(color: Colors.amber, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() => _pocketMode = true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+            ),
+            child: const Text('Ativar Modo Bolso'),
+          ),
+        ],
       ),
     );
   }

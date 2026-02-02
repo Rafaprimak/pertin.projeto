@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
@@ -34,6 +35,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
   bool _scheduleTrip = false;
   DateTime? _scheduledDateTime;
   List<SearchResult> _searchResults = [];
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -43,6 +45,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _nameController.dispose();
     _destinationController.dispose();
     _ticketPriceController.dispose();
@@ -67,45 +70,52 @@ class _NewTripScreenState extends State<NewTripScreen> {
     }
   }
 
-  Future<void> _searchDestination(String query) async {
+  // Busca com debounce de 300ms para evitar requisições excessivas
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    
     if (query.length < 2) {
       setState(() => _searchResults = []);
       return;
     }
-
+    
     setState(() => _isSearching = true);
+    
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _searchDestination(query);
+    });
+  }
+
+  Future<void> _searchDestination(String query) async {
+    if (query.length < 2) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+      return;
+    }
 
     try {
-      final locations = await LocationService.instance.getCoordinatesFromAddress(query);
+      // Usa múltiplas APIs em paralelo para resultados mais rápidos e completos
+      final results = await LocationService.instance.searchAddresses(query);
       
-      List<SearchResult> results = [];
-      for (var location in locations.take(5)) {
-        // Primeiro tenta pegar o nome da cidade local
-        String? cityName = LocationService.instance.getCityNameFromCoordinates(
-          location.latitude,
-          location.longitude,
-        );
-        
-        // Se não encontrar, busca o endereço
-        final address = cityName ?? await LocationService.instance.getAddressFromCoordinates(
-          location.latitude,
-          location.longitude,
-        );
-        
-        results.add(SearchResult(
-          address: address,
-          lat: location.latitude,
-          lng: location.longitude,
+      List<SearchResult> searchResults = [];
+      for (var result in results.take(10)) {
+        searchResults.add(SearchResult(
+          address: result['name'] as String,
+          lat: result['lat'] as double,
+          lng: result['lng'] as double,
         ));
       }
 
       if (mounted) {
         setState(() {
-          _searchResults = results;
+          _searchResults = searchResults;
           _isSearching = false;
         });
       }
     } catch (e) {
+      debugPrint('Erro na busca: $e');
       if (mounted) {
         setState(() {
           _searchResults = [];
@@ -406,7 +416,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
                     ),
                   )
                 : null,
-            onChanged: _searchDestination,
+            onChanged: _onSearchChanged,
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Digite um destino';

@@ -6,6 +6,7 @@ import 'package:pertin/providers/alarm_provider.dart';
 import 'package:pertin/services/alarm_service.dart';
 import 'package:pertin/screens/home_screen.dart';
 import 'package:pertin/screens/onboarding_screen.dart';
+import 'package:pertin/screens/email_verification_screen.dart';
 import 'package:pertin/widgets/sleepy_bus_logo.dart';
 import 'package:pertin/widgets/starry_sky_background.dart';
 import 'package:pertin/theme/app_colors.dart';
@@ -64,18 +65,20 @@ class _SplashScreenState extends State<SplashScreen>
       debugPrint('Carregando UserProvider...');
       await context.read<UserProvider>().init();
       debugPrint('UserProvider carregado!');
-      
+
       if (!mounted) return;
       debugPrint('Carregando TripProvider...');
       await context.read<TripProvider>().loadTrips();
       debugPrint('TripProvider carregado!');
-      
+
       // Restaura o rastreamento se houver viagem ativa
       if (!mounted) return;
       final tripProvider = context.read<TripProvider>();
       final alarmProvider = context.read<AlarmProvider>();
       if (tripProvider.activeTrip != null && !alarmProvider.isTracking) {
-        debugPrint('Restaurando rastreamento da viagem ativa: ${tripProvider.activeTrip!.name}');
+        debugPrint(
+          'Restaurando rastreamento da viagem ativa: ${tripProvider.activeTrip!.name}',
+        );
         await alarmProvider.startTracking(tripProvider.activeTrip!);
       }
 
@@ -84,13 +87,29 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (!mounted) return;
 
-      final isLoggedIn = context.read<UserProvider>().isLoggedIn;
-      debugPrint('Navegando para: ${isLoggedIn ? "HomeScreen" : "OnboardingScreen"}');
+      final userProvider = context.read<UserProvider>();
+      final isLoggedIn = userProvider.isLoggedIn;
+      final isEmailVerified = userProvider.isEmailVerified;
+
+      debugPrint(
+        'Navegando para: ${isLoggedIn ? (isEmailVerified ? "HomeScreen" : "EmailVerificationScreen") : "OnboardingScreen"}',
+      );
+
+      Widget destinationScreen;
+      if (isLoggedIn) {
+        if (isEmailVerified) {
+          destinationScreen = const HomeScreen();
+        } else {
+          destinationScreen = const EmailVerificationScreen(isNewUser: false);
+        }
+      } else {
+        destinationScreen = const OnboardingScreen();
+      }
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           pageBuilder: (context, animation, secondaryAnimation) =>
-              isLoggedIn ? const HomeScreen() : const OnboardingScreen(),
+              destinationScreen,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },

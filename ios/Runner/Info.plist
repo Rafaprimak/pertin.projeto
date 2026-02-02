@@ -45,5 +45,22 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Permissões de localização -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Pertin precisa da sua localização para avisar quando você estiver chegando ao destino.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Pertin precisa da sua localização em segundo plano para avisar quando você estiver chegando ao destino, mesmo com o celular bloqueado.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Pertin precisa da sua localização em segundo plano para avisar quando você estiver chegando ao destino.</string>
+	
+	<!-- Background modes para localização e áudio -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

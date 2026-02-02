@@ -1,13 +1,17 @@
 {
-    "name": "pertin",
-    "short_name": "pertin",
+    "name": "Pertin - Alarme de Destino",
+    "short_name": "Pertin",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0A1628",
+    "theme_color": "#0A1628",
+    "description": "Seu companheiro de viagem que te avisa quando você está chegando no destino. Nunca mais perca a parada certa!",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
+    "categories": ["travel", "utilities", "lifestyle"],
+    "scope": "/",
+    "lang": "pt-BR",
+    "dir": "ltr",
     "icons": [
         {
             "src": "icons/Icon-192.png",
@@ -30,6 +34,16 @@
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
+        }
+    ],
+    "screenshots": [],
+    "shortcuts": [
+        {
+            "name": "Nova Viagem",
+            "short_name": "Nova Viagem",
+            "description": "Iniciar uma nova viagem",
+            "url": "/?action=new_trip",
+            "icons": [{"src": "icons/Icon-192.png", "sizes": "192x192"}]
         }
     ]
 }

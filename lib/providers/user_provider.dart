@@ -10,12 +10,18 @@ class UserProvider extends ChangeNotifier {
   bool _isLoading = true;
   bool _isLoggedIn = false;
   String? _errorMessage;
-  
+
   // Rate limiting para reset de senha
   DateTime? _lastResetAttempt;
   int _resetAttemptCount = 0;
   static const int _maxResetAttempts = 3;
   static const Duration _resetCooldown = Duration(minutes: 5);
+
+  // Rate limiting para reenvio de verificação
+  DateTime? _lastVerificationAttempt;
+  int _verificationAttemptCount = 0;
+  static const int _maxVerificationAttempts = 3;
+  static const Duration _verificationCooldown = Duration(minutes: 2);
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -25,6 +31,7 @@ class UserProvider extends ChangeNotifier {
   String? get currentUserId => _firebaseUser?.uid;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _isLoggedIn;
+  bool get isEmailVerified => _firebaseUser?.emailVerified ?? false;
   String? get errorMessage => _errorMessage;
 
   CollectionReference<Map<String, dynamic>> get _usersCollection =>
@@ -42,7 +49,7 @@ class UserProvider extends ChangeNotifier {
       if (_isLoggedIn && _firebaseUser != null) {
         // Inicializa a criptografia com o UID do usuário
         await EncryptionService.instance.onUserLogin(_firebaseUser!.uid);
-        
+
         // Busca dados do usuário no Firestore
         final doc = await _usersCollection.doc(_firebaseUser!.uid).get();
         if (doc.exists) {
@@ -71,18 +78,18 @@ class UserProvider extends ChangeNotifier {
 
   Future<bool> register(String name, String email, String password) async {
     _errorMessage = null;
-    
+
     try {
       debugPrint('Registrando novo usuário no Firebase Auth: $name, $email');
-      
+
       // Cria usuário no Firebase Auth
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      
+
       _firebaseUser = userCredential.user;
-      
+
       if (_firebaseUser == null) {
         _errorMessage = 'Erro ao criar conta';
         notifyListeners();
@@ -94,18 +101,18 @@ class UserProvider extends ChangeNotifier {
 
       // Atualiza o nome do usuário
       await _firebaseUser!.updateDisplayName(name);
-      
+
       // Cria documento do usuário no Firestore
-      final newUser = UserModel(
-        name: name,
-        email: email,
-      );
-      
+      final newUser = UserModel(name: name, email: email);
+
       await _usersCollection.doc(_firebaseUser!.uid).set(newUser.toMap());
       debugPrint('Usuário salvo no Firebase com UID: ${_firebaseUser!.uid}');
 
       _user = newUser;
       _isLoggedIn = true;
+
+      // Envia email de verificação
+      await sendEmailVerification();
 
       debugPrint('Registro concluído com sucesso!');
       notifyListeners();
@@ -125,18 +132,18 @@ class UserProvider extends ChangeNotifier {
 
   Future<bool> login(String email, String password) async {
     _errorMessage = null;
-    
+
     try {
       debugPrint('Tentando login com email: $email');
-      
+
       // Faz login no Firebase Auth
       final userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      
+
       _firebaseUser = userCredential.user;
-      
+
       if (_firebaseUser == null) {
         _errorMessage = 'Erro ao fazer login';
         notifyListeners();
@@ -153,7 +160,7 @@ class UserProvider extends ChangeNotifier {
         data['id'] = doc.id;
         _user = UserModel.fromMap(data);
       }
-      
+
       _isLoggedIn = true;
       debugPrint('Login bem sucedido!');
       notifyListeners();
@@ -173,29 +180,31 @@ class UserProvider extends ChangeNotifier {
 
   Future<bool> resetPassword(String email) async {
     _errorMessage = null;
-    
+
     // Validação básica do email
     if (email.isEmpty) {
       _errorMessage = 'Por favor, insira seu e-mail';
       notifyListeners();
       return false;
     }
-    
+
     final trimmedEmail = email.trim().toLowerCase();
-    
+
     // Validação de formato de email
-    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    );
     if (!emailRegex.hasMatch(trimmedEmail)) {
       _errorMessage = 'E-mail inválido. Verifique o formato.';
       notifyListeners();
       return false;
     }
-    
+
     // Rate limiting - verifica se pode fazer nova tentativa
     final now = DateTime.now();
     if (_lastResetAttempt != null) {
       final timeSinceLastAttempt = now.difference(_lastResetAttempt!);
-      
+
       // Se passou o tempo de cooldown, reseta o contador
       if (timeSinceLastAttempt >= _resetCooldown) {
         _resetAttemptCount = 0;
@@ -209,17 +218,21 @@ class UserProvider extends ChangeNotifier {
         return false;
       }
     }
-    
+
     // Registra a tentativa
     _lastResetAttempt = now;
     _resetAttemptCount++;
-    
+
     try {
       // Envia email de redefinição de senha
-      debugPrint('Tentando enviar email de redefinição para: $trimmedEmail (tentativa $_resetAttemptCount/$_maxResetAttempts)');
+      debugPrint(
+        'Tentando enviar email de redefinição para: $trimmedEmail (tentativa $_resetAttemptCount/$_maxResetAttempts)',
+      );
       await _auth.sendPasswordResetEmail(email: trimmedEmail);
-      debugPrint('Email de redefinição de senha enviado com sucesso para: $trimmedEmail');
-      
+      debugPrint(
+        'Email de redefinição de senha enviado com sucesso para: $trimmedEmail',
+      );
+
       // Sucesso - reseta o contador após envio bem-sucedido
       _resetAttemptCount = 0;
       return true;
@@ -231,12 +244,15 @@ class UserProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Erro ao redefinir senha: $e');
       debugPrint('Tipo do erro: ${e.runtimeType}');
-      
+
       // Tenta extrair código de erro do Firebase
       final errorString = e.toString().toLowerCase();
-      if (errorString.contains('user-not-found') || errorString.contains('user not found')) {
-        _errorMessage = 'E-mail não encontrado. Verifique se está correto ou crie uma conta.';
-      } else if (errorString.contains('invalid-email') || errorString.contains('invalid email')) {
+      if (errorString.contains('user-not-found') ||
+          errorString.contains('user not found')) {
+        _errorMessage =
+            'E-mail não encontrado. Verifique se está correto ou crie uma conta.';
+      } else if (errorString.contains('invalid-email') ||
+          errorString.contains('invalid email')) {
         _errorMessage = 'E-mail inválido. Verifique o formato.';
       } else if (errorString.contains('too-many-requests')) {
         _errorMessage = 'Muitas tentativas. Aguarde alguns minutos.';
@@ -254,7 +270,93 @@ class UserProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateProfile({String? name, String? email, String? photoUrl}) async {
+  /// Envia email de verificação para o usuário atual
+  Future<bool> sendEmailVerification() async {
+    _errorMessage = null;
+
+    if (_firebaseUser == null) {
+      _errorMessage = 'Nenhum usuário logado';
+      notifyListeners();
+      return false;
+    }
+
+    // Verifica se já está verificado
+    await _firebaseUser!.reload();
+    _firebaseUser = _auth.currentUser;
+
+    if (_firebaseUser!.emailVerified) {
+      debugPrint('Email já verificado');
+      return true;
+    }
+
+    // Rate limiting para reenvio de verificação
+    final now = DateTime.now();
+    if (_lastVerificationAttempt != null) {
+      final timeSinceLastAttempt = now.difference(_lastVerificationAttempt!);
+
+      if (timeSinceLastAttempt >= _verificationCooldown) {
+        _verificationAttemptCount = 0;
+      } else if (_verificationAttemptCount >= _maxVerificationAttempts) {
+        final remainingTime = _verificationCooldown - timeSinceLastAttempt;
+        final minutes = remainingTime.inMinutes;
+        final seconds = remainingTime.inSeconds % 60;
+        _errorMessage = 'Muitas tentativas. Aguarde ${minutes}m ${seconds}s.';
+        notifyListeners();
+        return false;
+      }
+    }
+
+    _lastVerificationAttempt = now;
+    _verificationAttemptCount++;
+
+    try {
+      debugPrint('Enviando email de verificação para: ${_firebaseUser!.email}');
+      await _firebaseUser!.sendEmailVerification();
+      debugPrint('Email de verificação enviado com sucesso');
+      return true;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Erro ao enviar verificação: ${e.code} - ${e.message}');
+      _errorMessage = _getAuthErrorMessage(e.code);
+      notifyListeners();
+      return false;
+    } catch (e) {
+      debugPrint('Erro ao enviar email de verificação: $e');
+      _errorMessage = 'Erro ao enviar email de verificação. Tente novamente.';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Verifica se o email foi confirmado
+  Future<bool> checkEmailVerification() async {
+    if (_firebaseUser == null) return false;
+
+    try {
+      await _firebaseUser!.reload();
+      _firebaseUser = _auth.currentUser;
+
+      final verified = _firebaseUser?.emailVerified ?? false;
+      debugPrint('Status de verificação do email: $verified');
+
+      if (verified) {
+        notifyListeners();
+      }
+
+      return verified;
+    } catch (e) {
+      debugPrint('Erro ao verificar status do email: $e');
+      return false;
+    }
+  }
+
+  /// Retorna o email do usuário atual (para exibição na tela de verificação)
+  String? get currentUserEmail => _firebaseUser?.email;
+
+  Future<void> updateProfile({
+    String? name,
+    String? email,
+    String? photoUrl,
+  }) async {
     if (_user == null || _firebaseUser == null) return;
 
     try {
@@ -273,8 +375,10 @@ class UserProvider extends ChangeNotifier {
       );
 
       // Atualiza no Firestore
-      await _usersCollection.doc(_firebaseUser!.uid).update(updatedUser.toMap());
-      
+      await _usersCollection
+          .doc(_firebaseUser!.uid)
+          .update(updatedUser.toMap());
+
       _user = updatedUser;
       debugPrint('Perfil atualizado no Firebase');
       notifyListeners();

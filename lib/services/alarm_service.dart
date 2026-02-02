@@ -1,7 +1,12 @@
+import 'dart:typed_data';
+import 'dart:ui' show Color;
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:async';
+
+// Import condicional para web
+import 'web_platform_service.dart' if (dart.library.io) 'web_platform_service_stub.dart';
 
 class AlarmService {
   static final AlarmService instance = AlarmService._init();
@@ -14,8 +19,9 @@ class AlarmService {
   AlarmService._init();
 
   Future<void> init() async {
-    // Na web, notificações não são suportadas da mesma forma
+    // Inicializar serviço web se estiver na web
     if (kIsWeb) {
+      await WebPlatformService.instance.init();
       _isInitialized = true;
       return;
     }
@@ -44,15 +50,43 @@ class AlarmService {
     if (_isPlaying) return;
     _isPlaying = true;
 
-    // Tocar som de alarme usando URL de som gratuito
+    if (kIsWeb) {
+      // Usar Web Audio API para melhor compatibilidade (funciona offline)
+      try {
+        WebPlatformService.instance.playAlarmSound();
+        WebPlatformService.instance.vibrate([500, 200, 500, 200, 500, 200, 500]);
+        await WebPlatformService.instance.showNotification(
+          '🚌 VOCÊ CHEGOU!',
+          'Toque para abrir o app e desligar o alarme',
+          tag: 'pertin-alarm',
+        );
+      } catch (e) {
+        debugPrint('Erro no alarme web: $e');
+      }
+      
+      // Fallback: também tenta usar audioplayers com asset local
+      try {
+        await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+        await _audioPlayer.play(
+          AssetSource('sounds/alarm.ogg'),
+          volume: 1.0,
+        );
+      } catch (e) {
+        debugPrint('Erro no audioplayers: $e');
+      }
+      return;
+    }
+
+    // Código para mobile (Android/iOS) - usa asset local (funciona offline)
     try {
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.play(
-        UrlSource('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg'),
+        AssetSource('sounds/alarm.ogg'),
         volume: 1.0,
       );
     } catch (e) {
       // Se falhar, ignora (vibração ainda funcionará)
+      debugPrint('Erro ao tocar alarme: $e');
     }
 
     // Vibrar continuamente
@@ -83,50 +117,71 @@ class AlarmService {
     _vibrationTimer?.cancel();
     await _audioPlayer.stop();
     
-    if (!kIsWeb) {
-      try {
-        await _notifications.cancelAll();
-      } catch (e) {
-        debugPrint('Erro ao cancelar alarme: $e');
-      }
+    if (kIsWeb) {
+      WebPlatformService.instance.stopAlarmSound();
+      WebPlatformService.instance.stopVibration();
+      return;
+    }
+    
+    try {
+      await _notifications.cancelAll();
+    } catch (e) {
+      debugPrint('Erro ao cancelar alarme: $e');
     }
   }
 
   Future<void> _showNotification() async {
-    // Notificações não são suportadas na web
+    // Notificações não são suportadas na web (já tratado acima)
     if (kIsWeb) return;
     
     try {
-      const androidDetails = AndroidNotificationDetails(
-      'pertin_alarm',
-      'Alarme de Destino',
-      channelDescription: 'Notificação quando você chega ao destino',
-      importance: Importance.max,
-      priority: Priority.high,
-      fullScreenIntent: true,
-      ongoing: true,
-      autoCancel: false,
-      playSound: false,
-      enableVibration: false,
-    );
+      // Configuração Android com máxima prioridade para acordar o dispositivo
+      final androidDetails = AndroidNotificationDetails(
+        'pertin_alarm',
+        'Alarme de Destino',
+        channelDescription: 'Notificação quando você chega ao destino',
+        importance: Importance.max,
+        priority: Priority.high,
+        // IMPORTANTE: fullScreenIntent abre o app sobre a tela de bloqueio
+        fullScreenIntent: true,
+        ongoing: true,
+        autoCancel: false,
+        // Categoria de alarme para maior prioridade
+        category: AndroidNotificationCategory.alarm,
+        // Visibilidade pública para aparecer na tela de bloqueio
+        visibility: NotificationVisibility.public,
+        // Configurações de som e vibração
+        playSound: false, // Som é tocado pelo AudioPlayer
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList([0, 500, 200, 500, 200, 500]),
+        // LED e outras configurações
+        enableLights: true,
+        ledColor: const Color(0xFF87CEEB), // Baby blue
+        ledOnMs: 500,
+        ledOffMs: 500,
+        // Ticker para aparecer na barra de status
+        ticker: 'Você chegou ao destino!',
+      );
 
-    const iosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: false,
-    );
+      // Configuração iOS para acordar o dispositivo
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: false,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      );
 
-    const details = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
+      final details = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
 
-    await _notifications.show(
-      id: 1,
-      title: '🚌 Você chegou!',
-      body: 'Toque para desligar o alarme',
-      notificationDetails: details,
-    );
+      await _notifications.show(
+        id: 1,
+        title: '🚌 Você chegou!',
+        body: 'Toque para desligar o alarme',
+        notificationDetails: details,
+      );
     } catch (e) {
       debugPrint('Erro ao mostrar notificação: $e');
     }

@@ -5,6 +5,7 @@ import 'package:pertin/providers/user_provider.dart';
 import 'package:pertin/providers/trip_provider.dart';
 import 'package:pertin/screens/home_screen.dart';
 import 'package:pertin/screens/tutorial_screen.dart';
+import 'package:pertin/screens/email_verification_screen.dart';
 import 'package:pertin/widgets/starry_sky_background.dart';
 import 'package:pertin/widgets/sleepy_bus_logo.dart';
 import 'package:pertin/widgets/common_widgets.dart';
@@ -30,8 +31,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     OnboardingPage(
       title: 'Marque seu Destino',
-      description:
-          'Defina para onde você está indo e relaxe durante a viagem.',
+      description: 'Defina para onde você está indo e relaxe durante a viagem.',
       icon: Icons.location_on,
     ),
     OnboardingPage(
@@ -42,8 +42,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     OnboardingPage(
       title: 'Controle suas Viagens',
-      description:
-          'Acompanhe o histórico de viagens e controle seus gastos.',
+      description: 'Acompanhe o histórico de viagens e controle seus gastos.',
       icon: Icons.analytics,
     ),
   ];
@@ -103,11 +102,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ],
                 ),
               ),
-              child: Icon(
-                page.icon,
-                size: 80,
-                color: AppColors.babyBlue,
-              ),
+              child: Icon(page.icon, size: 80, color: AppColors.babyBlue),
             ),
           const SizedBox(height: 48),
           Text(
@@ -185,7 +180,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.babyBlue,
                   side: const BorderSide(color: AppColors.babyBlue, width: 2),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30),
                   ),
@@ -306,10 +304,7 @@ class AuthChoiceScreen extends StatelessWidget {
                   ),
                   child: const Text(
                     'Já tenho conta',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -331,8 +326,14 @@ class AuthChoiceScreen extends StatelessWidget {
                     label: const Text('Voltar'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.babyBlue,
-                      side: const BorderSide(color: AppColors.babyBlue, width: 2),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      side: const BorderSide(
+                        color: AppColors.babyBlue,
+                        width: 2,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30),
                       ),
@@ -376,28 +377,40 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
 
-    final success = await context.read<UserProvider>().login(
-          _emailController.text.trim(),
-          _passwordController.text,
-        );
-
-    if (success && mounted) {
-      // Recarrega as viagens após login bem-sucedido
-      await context.read<TripProvider>().reloadTrips();
-    }
+    final userProvider = context.read<UserProvider>();
+    final success = await userProvider.login(
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
 
     setState(() => _isLoading = false);
 
     if (success && mounted) {
+      // Verifica se o email foi verificado
+      if (!userProvider.isEmailVerified) {
+        // Redireciona para tela de verificação
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) =>
+                const EmailVerificationScreen(isNewUser: false),
+          ),
+          (route) => false,
+        );
+        return;
+      }
+
+      // Recarrega as viagens após login bem-sucedido
+      await context.read<TripProvider>().reloadTrips();
+
       // Verifica se o tutorial já foi visto
       final prefs = await SharedPreferences.getInstance();
       final tutorialCompleted = prefs.getBool('tutorial_completed') ?? false;
-      
+
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const HomeScreen()),
         (route) => false,
       );
-      
+
       // Se nunca viu o tutorial, mostra agora
       if (!tutorialCompleted && mounted) {
         Navigator.of(context).push(
@@ -431,9 +444,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 40),
-                  const Center(
-                    child: SleepyBusLogo(size: 100),
-                  ),
+                  const Center(child: SleepyBusLogo(size: 100)),
                   const SizedBox(height: 32),
                   const Text(
                     'Entrar',
@@ -572,8 +583,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         label: const Text('Voltar'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.babyBlue,
-                          side: const BorderSide(color: AppColors.babyBlue, width: 2),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          side: const BorderSide(
+                            color: AppColors.babyBlue,
+                            width: 2,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 14,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30),
                           ),
@@ -624,33 +641,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     final success = await context.read<UserProvider>().register(
-          _nameController.text.trim(),
-          _emailController.text.trim(),
-          _passwordController.text,
-        );
-
-    if (success && mounted) {
-      // Recarrega as viagens após registro bem-sucedido
-      await context.read<TripProvider>().reloadTrips();
-    }
+      _nameController.text.trim(),
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
 
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      // Primeiro registro = sempre mostra tutorial
+      // Redireciona para tela de verificação de email
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (context) => const EmailVerificationScreen(isNewUser: true),
+        ),
         (route) => false,
       );
-      
-      // Mostra o tutorial para novo usuário
-      if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const TutorialScreen(isFirstTime: true),
-          ),
-        );
-      }
     } else if (mounted) {
       final error = context.read<UserProvider>().errorMessage;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -676,9 +681,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 20),
-                  const Center(
-                    child: SleepyBusLogo(size: 100),
-                  ),
+                  const Center(child: SleepyBusLogo(size: 100)),
                   const SizedBox(height: 24),
                   const Text(
                     'Criar Conta',
@@ -780,7 +783,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                             onPressed: () {
                               setState(() {
-                                _obscureConfirmPassword = !_obscureConfirmPassword;
+                                _obscureConfirmPassword =
+                                    !_obscureConfirmPassword;
                               });
                             },
                           ),
@@ -849,8 +853,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         label: const Text('Voltar'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.babyBlue,
-                          side: const BorderSide(color: AppColors.babyBlue, width: 2),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          side: const BorderSide(
+                            color: AppColors.babyBlue,
+                            width: 2,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 14,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30),
                           ),
@@ -894,8 +904,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     final success = await context.read<UserProvider>().resetPassword(
-          _emailController.text.trim(),
-        );
+      _emailController.text.trim(),
+    );
 
     setState(() => _isLoading = false);
 
@@ -903,7 +913,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       setState(() => _emailSent = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Email de recuperação enviado! Verifique sua caixa de entrada e pasta de spam.'),
+          content: Text(
+            'Email de recuperação enviado! Verifique sua caixa de entrada e pasta de spam.',
+          ),
           backgroundColor: AppColors.success,
           duration: Duration(seconds: 5),
         ),
@@ -933,9 +945,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 40),
-                  const Center(
-                    child: SleepyBusLogo(size: 100),
-                  ),
+                  const Center(child: SleepyBusLogo(size: 100)),
                   const SizedBox(height: 32),
                   const Text(
                     'Recuperar Senha',
@@ -948,13 +958,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _emailSent 
+                    _emailSent
                         ? 'Email enviado! Verifique sua caixa de entrada e siga as instruções para redefinir sua senha.'
                         : 'Digite seu e-mail cadastrado e enviaremos um link para redefinir sua senha',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 16,
-                      color: _emailSent ? AppColors.success : AppColors.textSecondary,
+                      color: _emailSent
+                          ? AppColors.success
+                          : AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 48),
@@ -1016,8 +1028,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         label: Text(_emailSent ? 'Voltar ao Login' : 'Voltar'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.babyBlue,
-                          side: const BorderSide(color: AppColors.babyBlue, width: 2),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          side: const BorderSide(
+                            color: AppColors.babyBlue,
+                            width: 2,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 14,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30),
                           ),

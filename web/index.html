@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,21 +18,87 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Pertin - Seu companheiro de viagem que te avisa quando você está chegando no destino. Nunca mais perca a parada certa!">
 
-  <!-- iOS meta tags & icons -->
+  <!-- iOS meta tags & icons - Essencial para PWA no iPhone -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="pertin">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pertin">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="icons/Icon-192.png">
+  
+  <!-- Splash screens para iOS -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <!-- Theme color para Android e iOS -->
+  <meta name="theme-color" content="#0A1628">
+  <meta name="msapplication-navbutton-color" content="#0A1628">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>pertin</title>
+  <title>Pertin - Alarme de Destino</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Preload do som de alarme para evitar delay -->
+  <link rel="preload" href="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" as="audio" crossorigin>
+  
+  <style>
+    /* Estilo de loading enquanto Flutter carrega */
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #0A1628 0%, #1a2a4a 100%);
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(135, 206, 250, 0.3);
+      border-top-color: #87CEEB;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      margin-top: 20px;
+      font-size: 18px;
+      opacity: 0.8;
+    }
+  </style>
 </head>
 <body>
+  <!-- Loading screen -->
+  <div id="loading" class="loading-container">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Carregando Pertin...</div>
+  </div>
+  
+  <!-- Pertin Web Helper - Funções extras para PWA -->
+  <script src="pertin_web_helper.js"></script>
+  
+  <script>
+    // Remove loading quando Flutter carregar
+    window.addEventListener('flutter-first-frame', function() {
+      const loading = document.getElementById('loading');
+      if (loading) {
+        loading.style.opacity = '0';
+        loading.style.transition = 'opacity 0.3s';
+        setTimeout(() => loading.remove(), 300);
+      }
+    });
+  </script>
+  
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
