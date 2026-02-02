@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pertin/providers/user_provider.dart';
 import 'package:pertin/providers/trip_provider.dart';
 import 'package:pertin/screens/home_screen.dart';
+import 'package:pertin/screens/tutorial_screen.dart';
 import 'package:pertin/widgets/starry_sky_background.dart';
 import 'package:pertin/widgets/sleepy_bus_logo.dart';
 import 'package:pertin/widgets/common_widgets.dart';
@@ -387,10 +389,23 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
+      // Verifica se o tutorial já foi visto
+      final prefs = await SharedPreferences.getInstance();
+      final tutorialCompleted = prefs.getBool('tutorial_completed') ?? false;
+      
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const HomeScreen()),
         (route) => false,
       );
+      
+      // Se nunca viu o tutorial, mostra agora
+      if (!tutorialCompleted && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const TutorialScreen(isFirstTime: true),
+          ),
+        );
+      }
     } else if (mounted) {
       final error = context.read<UserProvider>().errorMessage;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -622,10 +637,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
+      // Primeiro registro = sempre mostra tutorial
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const HomeScreen()),
         (route) => false,
       );
+      
+      // Mostra o tutorial para novo usuário
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const TutorialScreen(isFirstTime: true),
+          ),
+        );
+      }
     } else if (mounted) {
       final error = context.read<UserProvider>().errorMessage;
       ScaffoldMessenger.of(context).showSnackBar(

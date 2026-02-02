@@ -176,7 +176,7 @@ class HistoryScreen extends StatelessWidget {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => TripDetailScreen(trip: trip),
+              builder: (context) => TripDetailScreen(tripId: trip.id!),
             ),
           );
         },

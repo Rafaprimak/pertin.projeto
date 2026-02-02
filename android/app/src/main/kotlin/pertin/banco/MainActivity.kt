@@ -1,4 +1,4 @@
-package com.pertin.pertin
+package pertin.banco
 
 import io.flutter.embedding.android.FlutterActivity
 

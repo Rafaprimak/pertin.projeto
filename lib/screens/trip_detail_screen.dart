@@ -12,21 +12,27 @@ import 'package:pertin/theme/app_colors.dart';
 import 'package:intl/intl.dart';
 
 class TripDetailScreen extends StatefulWidget {
-  final Trip trip;
+  final String tripId;
 
-  const TripDetailScreen({super.key, required this.trip});
+  const TripDetailScreen({super.key, required this.tripId});
+  
+  /// Factory constructor para criar a partir de um Trip existente
+  factory TripDetailScreen.fromTrip(Trip trip) {
+    return TripDetailScreen(tripId: trip.id!);
+  }
 
   @override
   State<TripDetailScreen> createState() => _TripDetailScreenState();
 }
 
 class _TripDetailScreenState extends State<TripDetailScreen> {
-  late Trip _trip;
-  
-  @override
-  void initState() {
-    super.initState();
-    _trip = widget.trip;
+  /// Obtém a trip atualizada diretamente do Provider
+  Trip? _getTrip(TripProvider provider) {
+    try {
+      return provider.trips.firstWhere((t) => t.id == widget.tripId);
+    } catch (e) {
+      return null;
+    }
   }
 
   Color _getStatusColor(TripStatus status) {
@@ -46,14 +52,14 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
   }
 
-  void _showStatusPicker() {
+  void _showStatusPicker(Trip trip) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.cardDark,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
+      builder: (ctx) => Container(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -69,7 +75,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             ),
             const SizedBox(height: 20),
             ...TripStatus.values.map((status) {
-              final isSelected = status == _trip.status;
+              final isSelected = status == trip.status;
               return ListTile(
                 leading: Icon(
                   status.icon,
@@ -92,12 +98,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     ? _getStatusColor(status).withOpacity(0.15)
                     : null,
                 onTap: () async {
-                  Navigator.pop(context);
-                  if (status != _trip.status) {
+                  Navigator.pop(ctx);
+                  if (status != trip.status) {
                     final tripProvider = context.read<TripProvider>();
                     final alarmProvider = context.read<AlarmProvider>();
                     
-                    final success = await tripProvider.updateTripStatus(_trip.id, status);
+                    final success = await tripProvider.updateTripStatus(trip.id, status);
                     
                     if (success && mounted) {
                       // Se mudou para cancelada, concluída ou adiada, para o tracking
@@ -107,16 +113,11 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       
                       if (shouldStopTracking && 
                           alarmProvider.isTracking && 
-                          alarmProvider.targetTrip?.id == _trip.id) {
+                          alarmProvider.targetTrip?.id == trip.id) {
                         alarmProvider.stopTracking();
                       }
                       
-                      setState(() {
-                        _trip = _trip.copyWith(
-                          status: status,
-                          completed: status == TripStatus.concluida,
-                        );
-                      });
+                      // Provider já notifica automaticamente, não precisa de setState
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('Status alterado para: ${status.displayName}'),
@@ -140,55 +141,75 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
-    return Scaffold(
-      body: StarrySkyBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildAppBar(context),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHeader(),
-                      if (_trip.status == TripStatus.agendada) ...[
-                        const SizedBox(height: 16),
-                        _buildStartScheduledTripButton(),
-                      ],
-                      const SizedBox(height: 24),
-                      _buildRouteCard(),
-                      const SizedBox(height: 24),
-                      _buildInfoCards(dateFormat),
-                      const SizedBox(height: 24),
-                      _buildExpensesSection(context, currencyFormat),
-                    ],
-                  ),
-                ),
+    return Consumer<TripProvider>(
+      builder: (context, tripProvider, child) {
+        final trip = _getTrip(tripProvider);
+        
+        if (trip == null) {
+          // Trip foi excluída, volta para a tela anterior
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) Navigator.of(context).pop();
+          });
+          return const Scaffold(
+            body: StarrySkyBackground(
+              child: Center(
+                child: CircularProgressIndicator(color: AppColors.babyBlue),
               ),
-            ],
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AddExpenseScreen(tripId: _trip.id!),
             ),
           );
-        },
-        backgroundColor: AppColors.babyBlue,
-        foregroundColor: AppColors.midnightBlue,
-        icon: const Icon(Icons.add),
-        label: const Text('Adicionar Gasto'),
-      ),
+        }
+        
+        return Scaffold(
+          body: StarrySkyBackground(
+            child: SafeArea(
+              child: Column(
+                children: [
+                  _buildAppBar(context, trip),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildHeader(trip),
+                          if (trip.status == TripStatus.agendada) ...[
+                            const SizedBox(height: 16),
+                            _buildStartScheduledTripButton(trip),
+                          ],
+                          const SizedBox(height: 24),
+                          _buildRouteCard(trip),
+                          const SizedBox(height: 24),
+                          _buildInfoCards(trip, dateFormat),
+                          const SizedBox(height: 24),
+                          _buildExpensesSection(context, trip, currencyFormat),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AddExpenseScreen(tripId: widget.tripId),
+                ),
+              );
+            },
+            backgroundColor: AppColors.babyBlue,
+            foregroundColor: AppColors.midnightBlue,
+            icon: const Icon(Icons.add),
+            label: const Text('Adicionar Gasto'),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildAppBar(BuildContext context) {
+  Widget _buildAppBar(BuildContext context, Trip trip) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -209,7 +230,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             ),
           ),
           IconButton(
-            onPressed: _showDeleteConfirmation,
+            onPressed: () => _showDeleteConfirmation(trip),
             icon: const Icon(Icons.delete_outline, color: AppColors.error),
           ),
         ],
@@ -217,10 +238,10 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     );
   }
 
-  void _showDeleteConfirmation() {
+  void _showDeleteConfirmation(Trip trip) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.cardDark,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -236,12 +257,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           ],
         ),
         content: Text(
-          'Tem certeza que deseja excluir a viagem "${_trip.name}"?\n\nTodas as despesas associadas também serão excluídas. Esta ação não pode ser desfeita.',
+          'Tem certeza que deseja excluir a viagem "${trip.name}"?\n\nTodas as despesas associadas também serão excluídas. Esta ação não pode ser desfeita.',
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text(
               'Cancelar',
               style: TextStyle(color: AppColors.textSecondary),
@@ -249,7 +270,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context); // Fecha o dialog
+              Navigator.pop(ctx); // Fecha o dialog
               await _deleteTrip();
             },
             style: ElevatedButton.styleFrom(
@@ -266,7 +287,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   Future<void> _deleteTrip() async {
     final tripProvider = context.read<TripProvider>();
     
-    await tripProvider.deleteTrip(_trip.id);
+    await tripProvider.deleteTrip(widget.tripId);
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -279,8 +300,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
   }
 
-  Widget _buildHeader() {
-    final statusColor = _getStatusColor(_trip.status);
+  Widget _buildHeader(Trip trip) {
+    final statusColor = _getStatusColor(trip.status);
     
     return Row(
       children: [
@@ -291,7 +312,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
           child: Icon(
-            _trip.status.icon,
+            trip.status.icon,
             color: statusColor,
             size: 40,
           ),
@@ -302,7 +323,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _trip.name,
+                trip.name,
                 style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -311,7 +332,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               ),
               const SizedBox(height: 8),
               InkWell(
-                onTap: _showStatusPicker,
+                onTap: () => _showStatusPicker(trip),
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -327,13 +348,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _trip.status.icon,
+                        trip.status.icon,
                         size: 14,
                         color: statusColor,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        _trip.status.displayName,
+                        trip.status.displayName,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -357,9 +378,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     );
   }
 
-  Widget _buildStartScheduledTripButton() {
+  Widget _buildStartScheduledTripButton(Trip trip) {
     final dateFormat = DateFormat('dd/MM/yyyy \'às\' HH:mm');
-    final scheduledTime = _trip.scheduledStartTime;
+    final scheduledTime = trip.scheduledStartTime;
 
     return GlassCard(
       child: Column(
@@ -409,7 +430,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _startScheduledTrip,
+              onPressed: () => _startScheduledTrip(trip),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.success,
                 foregroundColor: AppColors.white,
@@ -433,21 +454,16 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     );
   }
 
-  Future<void> _startScheduledTrip() async {
+  Future<void> _startScheduledTrip(Trip trip) async {
     final tripProvider = context.read<TripProvider>();
     final alarmProvider = context.read<AlarmProvider>();
     
     try {
-      final updatedTrip = await tripProvider.startScheduledTrip(_trip.id);
+      final updatedTrip = await tripProvider.startScheduledTrip(trip.id);
       
       if (updatedTrip != null && mounted) {
         // Inicia o tracking com o alarme
         await alarmProvider.startTracking(updatedTrip);
-
-        // Atualiza o estado local
-        setState(() {
-          _trip = updatedTrip;
-        });
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -483,7 +499,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
   }
 
-  Widget _buildRouteCard() {
+  Widget _buildRouteCard(Trip trip) {
     return GlassCard(
       child: Column(
         children: [
@@ -491,7 +507,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             icon: Icons.my_location,
             iconColor: AppColors.success,
             label: 'Origem',
-            address: _trip.originName,
+            address: trip.originName,
           ),
           const SizedBox(height: 16),
           Container(
@@ -516,7 +532,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             icon: Icons.flag,
             iconColor: AppColors.error,
             label: 'Destino',
-            address: _trip.destinationName,
+            address: trip.destinationName,
           ),
         ],
       ),
@@ -567,7 +583,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     );
   }
 
-  Widget _buildInfoCards(DateFormat dateFormat) {
+  Widget _buildInfoCards(Trip trip, DateFormat dateFormat) {
     final currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
     return Row(
@@ -592,7 +608,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   ),
                 ),
                 Text(
-                  dateFormat.format(_trip.startTime),
+                  dateFormat.format(trip.startTime),
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -624,7 +640,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   ),
                 ),
                 Text(
-                  currencyFormat.format(_trip.totalExpenses),
+                  currencyFormat.format(trip.totalExpenses),
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -639,7 +655,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     );
   }
 
-  Widget _buildExpensesSection(BuildContext context, NumberFormat currencyFormat) {
+  Widget _buildExpensesSection(BuildContext context, Trip trip, NumberFormat currencyFormat) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -652,7 +668,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        if (_trip.expenses.isEmpty)
+        if (trip.expenses.isEmpty)
           GlassCard(
             child: Center(
               child: Column(
@@ -674,7 +690,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             ),
           )
         else
-          ..._trip.expenses.map((expense) {
+          ...trip.expenses.map((expense) {
             return GlassCard(
               margin: const EdgeInsets.symmetric(vertical: 6),
               padding: const EdgeInsets.all(16),
@@ -683,7 +699,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => EditExpenseScreen(
-                      tripId: _trip.id!,
+                      tripId: trip.id!,
                       expenseId: expense.id!,
                     ),
                   ),

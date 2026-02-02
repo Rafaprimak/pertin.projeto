@@ -7,6 +7,7 @@ import 'package:pertin/providers/user_provider.dart';
 import 'package:pertin/providers/trip_provider.dart';
 import 'package:pertin/providers/alarm_provider.dart';
 import 'package:pertin/screens/onboarding_screen.dart';
+import 'package:pertin/screens/tutorial_screen.dart';
 import 'package:pertin/services/alarm_service.dart';
 import 'package:pertin/widgets/starry_sky_background.dart';
 import 'package:pertin/widgets/sleepy_bus_logo.dart';
@@ -237,6 +238,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.file_download_outlined,
                 title: 'Exportar Viagens (CSV)',
                 onTap: () => _exportTripsToCSV(context),
+              ),
+              _buildDivider(),
+              _buildSettingItem(
+                icon: Icons.help_outline,
+                title: 'Ver Tutorial',
+                trailing: const Icon(
+                  Icons.play_circle_outline,
+                  color: AppColors.babyBlue,
+                ),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const TutorialScreen(isFirstTime: false),
+                    ),
+                  );
+                },
               ),
             ],
           ),
