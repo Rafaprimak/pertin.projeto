@@ -1,5 +1,53 @@
+import 'package:flutter/material.dart';
+
+/// Status possíveis de uma viagem
+enum TripStatus {
+  agendada,
+  emAndamento,
+  concluida,
+  cancelada,
+  adiada,
+  pausada,
+}
+
+extension TripStatusExtension on TripStatus {
+  String get displayName {
+    switch (this) {
+      case TripStatus.agendada:
+        return 'Agendada';
+      case TripStatus.emAndamento:
+        return 'Em Andamento';
+      case TripStatus.concluida:
+        return 'Concluída';
+      case TripStatus.cancelada:
+        return 'Cancelada';
+      case TripStatus.adiada:
+        return 'Adiada';
+      case TripStatus.pausada:
+        return 'Pausada';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case TripStatus.agendada:
+        return Icons.event;
+      case TripStatus.emAndamento:
+        return Icons.directions_bus;
+      case TripStatus.concluida:
+        return Icons.check_circle;
+      case TripStatus.cancelada:
+        return Icons.cancel;
+      case TripStatus.adiada:
+        return Icons.schedule;
+      case TripStatus.pausada:
+        return Icons.pause_circle;
+    }
+  }
+}
+
 class Trip {
-  final int? id;
+  final String? id;
   final String name;
   final String originName;
   final double originLat;
@@ -8,8 +56,10 @@ class Trip {
   final double destinationLat;
   final double destinationLng;
   final DateTime startTime;
+  final DateTime? scheduledStartTime; // Para viagens agendadas
   final DateTime? endTime;
   final bool completed;
+  final TripStatus status;
   final double? distance;
   final List<TripExpense> expenses;
 
@@ -23,18 +73,26 @@ class Trip {
     required this.destinationLat,
     required this.destinationLng,
     required this.startTime,
+    this.scheduledStartTime,
     this.endTime,
     this.completed = false,
+    this.status = TripStatus.emAndamento,
     this.distance,
     this.expenses = const [],
   });
+
+  /// Retorna true se a viagem está agendada para o futuro
+  bool get isScheduled => scheduledStartTime != null && scheduledStartTime!.isAfter(DateTime.now());
+  
+  /// Retorna true se a viagem agendada pode ser iniciada (hora chegou)
+  bool get canStart => scheduledStartTime == null || scheduledStartTime!.isBefore(DateTime.now());
 
   double get totalExpenses {
     return expenses.fold(0.0, (sum, expense) => sum + expense.amount);
   }
 
   Trip copyWith({
-    int? id,
+    String? id,
     String? name,
     String? originName,
     double? originLat,
@@ -43,8 +101,10 @@ class Trip {
     double? destinationLat,
     double? destinationLng,
     DateTime? startTime,
+    DateTime? scheduledStartTime,
     DateTime? endTime,
     bool? completed,
+    TripStatus? status,
     double? distance,
     List<TripExpense>? expenses,
   }) {
@@ -58,8 +118,10 @@ class Trip {
       destinationLat: destinationLat ?? this.destinationLat,
       destinationLng: destinationLng ?? this.destinationLng,
       startTime: startTime ?? this.startTime,
+      scheduledStartTime: scheduledStartTime ?? this.scheduledStartTime,
       endTime: endTime ?? this.endTime,
       completed: completed ?? this.completed,
+      status: status ?? this.status,
       distance: distance ?? this.distance,
       expenses: expenses ?? this.expenses,
     );
@@ -76,8 +138,10 @@ class Trip {
       'destinationLat': destinationLat,
       'destinationLng': destinationLng,
       'startTime': startTime.toIso8601String(),
+      'scheduledStartTime': scheduledStartTime?.toIso8601String(),
       'endTime': endTime?.toIso8601String(),
       'completed': completed ? 1 : 0,
+      'status': status.name,
       'distance': distance,
       'expenses': expenses.map((e) => e.toMap()).toList(),
     };
@@ -91,8 +155,19 @@ class Trip {
           .toList();
     }
     
+    // Parse do status
+    TripStatus tripStatus = TripStatus.emAndamento;
+    if (map['status'] != null) {
+      tripStatus = TripStatus.values.firstWhere(
+        (s) => s.name == map['status'],
+        orElse: () => TripStatus.emAndamento,
+      );
+    } else if (map['completed'] == true || map['completed'] == 1) {
+      tripStatus = TripStatus.concluida;
+    }
+    
     return Trip(
-      id: map['id'],
+      id: map['id']?.toString(),
       name: map['name'] ?? '',
       originName: map['originName'] ?? '',
       originLat: (map['originLat'] ?? 0).toDouble(),
@@ -103,8 +178,12 @@ class Trip {
       startTime: map['startTime'] != null 
           ? DateTime.parse(map['startTime']) 
           : DateTime.now(),
+      scheduledStartTime: map['scheduledStartTime'] != null 
+          ? DateTime.parse(map['scheduledStartTime']) 
+          : null,
       endTime: map['endTime'] != null ? DateTime.parse(map['endTime']) : null,
       completed: map['completed'] == 1 || map['completed'] == true,
+      status: tripStatus,
       distance: map['distance']?.toDouble(),
       expenses: expensesList,
     );
@@ -112,8 +191,8 @@ class Trip {
 }
 
 class TripExpense {
-  final int? id;
-  final int tripId;
+  final String? id;
+  final String tripId;
   final String description;
   final double amount;
   final ExpenseCategory category;
@@ -141,8 +220,8 @@ class TripExpense {
 
   factory TripExpense.fromMap(Map<String, dynamic> map) {
     return TripExpense(
-      id: map['id'],
-      tripId: map['tripId'] ?? 0,
+      id: map['id']?.toString(),
+      tripId: map['tripId']?.toString() ?? '',
       description: map['description'] ?? '',
       amount: (map['amount'] ?? 0).toDouble(),
       category: ExpenseCategory.values.firstWhere(

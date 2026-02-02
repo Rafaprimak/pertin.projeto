@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pertin/providers/user_provider.dart';
+import 'package:pertin/providers/trip_provider.dart';
 import 'package:pertin/screens/home_screen.dart';
 import 'package:pertin/widgets/starry_sky_background.dart';
 import 'package:pertin/widgets/sleepy_bus_logo.dart';
@@ -378,6 +379,11 @@ class _LoginScreenState extends State<LoginScreen> {
           _passwordController.text,
         );
 
+    if (success && mounted) {
+      // Recarrega as viagens após login bem-sucedido
+      await context.read<TripProvider>().reloadTrips();
+    }
+
     setState(() => _isLoading = false);
 
     if (success && mounted) {
@@ -607,6 +613,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           _emailController.text.trim(),
           _passwordController.text,
         );
+
+    if (success && mounted) {
+      // Recarrega as viagens após registro bem-sucedido
+      await context.read<TripProvider>().reloadTrips();
+    }
 
     setState(() => _isLoading = false);
 
@@ -843,17 +854,12 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
+  bool _emailSent = false;
 
   @override
   void dispose() {
     _emailController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -864,26 +870,24 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     final success = await context.read<UserProvider>().resetPassword(
           _emailController.text.trim(),
-          _newPasswordController.text,
         );
 
     setState(() => _isLoading = false);
 
     if (success && mounted) {
+      setState(() => _emailSent = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Senha alterada com sucesso!'),
+          content: Text('Email de recuperação enviado! Verifique sua caixa de entrada e pasta de spam.'),
           backgroundColor: AppColors.success,
+          duration: Duration(seconds: 5),
         ),
-      );
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
       );
     } else if (mounted) {
       final error = context.read<UserProvider>().errorMessage;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error ?? 'Erro ao redefinir senha'),
+          content: Text(error ?? 'Erro ao enviar email de recuperação'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -918,103 +922,55 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Digite seu e-mail e crie uma nova senha',
+                  Text(
+                    _emailSent 
+                        ? 'Email enviado! Verifique sua caixa de entrada e siga as instruções para redefinir sua senha.'
+                        : 'Digite seu e-mail cadastrado e enviaremos um link para redefinir sua senha',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 16,
-                      color: AppColors.textSecondary,
+                      color: _emailSent ? AppColors.success : AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 48),
-                  GlassCard(
-                    child: Column(
-                      children: [
-                        StyledTextField(
-                          controller: _emailController,
-                          labelText: 'E-mail',
-                          hintText: 'Digite seu e-mail cadastrado',
-                          prefixIcon: Icons.email_outlined,
-                          keyboardType: TextInputType.emailAddress,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Por favor, digite seu e-mail';
-                            }
-                            if (!value.contains('@')) {
-                              return 'Digite um e-mail válido';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        StyledTextField(
-                          controller: _newPasswordController,
-                          labelText: 'Nova Senha',
-                          hintText: 'Crie uma nova senha',
-                          prefixIcon: Icons.lock_outlined,
-                          obscureText: _obscurePassword,
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              color: AppColors.textSecondary,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
+                  if (!_emailSent) ...[
+                    GlassCard(
+                      child: Column(
+                        children: [
+                          StyledTextField(
+                            controller: _emailController,
+                            labelText: 'E-mail',
+                            hintText: 'Digite seu e-mail cadastrado',
+                            prefixIcon: Icons.email_outlined,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Por favor, digite seu e-mail';
+                              }
+                              if (!value.contains('@')) {
+                                return 'Digite um e-mail válido';
+                              }
+                              return null;
                             },
                           ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Por favor, crie uma nova senha';
-                            }
-                            if (value.length < 6) {
-                              return 'A senha deve ter pelo menos 6 caracteres';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        StyledTextField(
-                          controller: _confirmPasswordController,
-                          labelText: 'Confirmar Nova Senha',
-                          hintText: 'Digite a nova senha novamente',
-                          prefixIcon: Icons.lock_outlined,
-                          obscureText: _obscureConfirmPassword,
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscureConfirmPassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              color: AppColors.textSecondary,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscureConfirmPassword = !_obscureConfirmPassword;
-                              });
-                            },
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Por favor, confirme a nova senha';
-                            }
-                            if (value != _newPasswordController.text) {
-                              return 'As senhas não coincidem';
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 32),
-                  GradientButton(
-                    text: 'Redefinir Senha',
-                    isLoading: _isLoading,
-                    onPressed: _resetPassword,
-                  ),
+                    const SizedBox(height: 32),
+                    GradientButton(
+                      text: 'Enviar Email de Recuperação',
+                      isLoading: _isLoading,
+                      onPressed: _resetPassword,
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 20),
+                    Icon(
+                      Icons.mark_email_read_outlined,
+                      size: 80,
+                      color: AppColors.success,
+                    ),
+                    const SizedBox(height: 32),
+                  ],
                   const SizedBox(height: 24),
                   Center(
                     child: Container(
@@ -1032,7 +988,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       child: OutlinedButton.icon(
                         onPressed: () => Navigator.pop(context),
                         icon: const Icon(Icons.arrow_back, size: 18),
-                        label: const Text('Voltar ao Login'),
+                        label: Text(_emailSent ? 'Voltar ao Login' : 'Voltar'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.babyBlue,
                           side: const BorderSide(color: AppColors.babyBlue, width: 2),

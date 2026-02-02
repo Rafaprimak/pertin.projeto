@@ -159,6 +159,7 @@ class HistoryScreen extends StatelessWidget {
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.error,
+                  foregroundColor: AppColors.midnightBlue,
                 ),
                 child: const Text('Excluir'),
               ),

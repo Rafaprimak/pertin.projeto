@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pertin/providers/user_provider.dart';
 import 'package:pertin/providers/trip_provider.dart';
+import 'package:pertin/providers/alarm_provider.dart';
 import 'package:pertin/services/alarm_service.dart';
 import 'package:pertin/screens/home_screen.dart';
 import 'package:pertin/screens/onboarding_screen.dart';
@@ -54,14 +55,29 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _initializeApp() async {
     try {
       // Inicializa serviços
+      debugPrint('Iniciando AlarmService...');
       await AlarmService.instance.init();
+      debugPrint('AlarmService iniciado!');
 
       // Carrega dados do usuário
       if (!mounted) return;
+      debugPrint('Carregando UserProvider...');
       await context.read<UserProvider>().init();
+      debugPrint('UserProvider carregado!');
       
       if (!mounted) return;
+      debugPrint('Carregando TripProvider...');
       await context.read<TripProvider>().loadTrips();
+      debugPrint('TripProvider carregado!');
+      
+      // Restaura o rastreamento se houver viagem ativa
+      if (!mounted) return;
+      final tripProvider = context.read<TripProvider>();
+      final alarmProvider = context.read<AlarmProvider>();
+      if (tripProvider.activeTrip != null && !alarmProvider.isTracking) {
+        debugPrint('Restaurando rastreamento da viagem ativa: ${tripProvider.activeTrip!.name}');
+        await alarmProvider.startTracking(tripProvider.activeTrip!);
+      }
 
       // Aguarda animação
       await Future.delayed(const Duration(seconds: 2));
@@ -69,6 +85,7 @@ class _SplashScreenState extends State<SplashScreen>
       if (!mounted) return;
 
       final isLoggedIn = context.read<UserProvider>().isLoggedIn;
+      debugPrint('Navegando para: ${isLoggedIn ? "HomeScreen" : "OnboardingScreen"}');
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
@@ -80,8 +97,10 @@ class _SplashScreenState extends State<SplashScreen>
           transitionDuration: const Duration(milliseconds: 800),
         ),
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Em caso de erro, vai para onboarding
+      debugPrint('Erro no splash: $e');
+      debugPrint('StackTrace: $stackTrace');
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const OnboardingScreen()),

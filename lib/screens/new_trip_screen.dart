@@ -20,6 +20,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _destinationController = TextEditingController();
+  final _ticketPriceController = TextEditingController();
   
   Position? _currentPosition;
   String _currentAddress = 'Obtendo localização...';
@@ -29,6 +30,9 @@ class _NewTripScreenState extends State<NewTripScreen> {
   double _alertRadius = 200;
   bool _isLoading = false;
   bool _isSearching = false;
+  bool _addTicketPrice = false;
+  bool _scheduleTrip = false;
+  DateTime? _scheduledDateTime;
   List<SearchResult> _searchResults = [];
 
   @override
@@ -41,6 +45,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
   void dispose() {
     _nameController.dispose();
     _destinationController.dispose();
+    _ticketPriceController.dispose();
     super.dispose();
   }
 
@@ -143,6 +148,17 @@ class _NewTripScreenState extends State<NewTripScreen> {
 
     setState(() => _isLoading = true);
 
+    // Parse do valor da passagem
+    double? ticketPrice;
+    if (_addTicketPrice && _ticketPriceController.text.isNotEmpty) {
+      final priceText = _ticketPriceController.text
+          .replaceAll('R\$', '')
+          .replaceAll('.', '')
+          .replaceAll(',', '.')
+          .trim();
+      ticketPrice = double.tryParse(priceText);
+    }
+
     final trip = await context.read<TripProvider>().createTrip(
       name: _nameController.text.trim(),
       originName: _currentAddress,
@@ -151,15 +167,29 @@ class _NewTripScreenState extends State<NewTripScreen> {
       destinationName: _destinationAddress,
       destinationLat: _destinationLat!,
       destinationLng: _destinationLng!,
+      ticketPrice: ticketPrice,
+      scheduledStartTime: _scheduleTrip ? _scheduledDateTime : null,
     );
 
     if (trip != null && mounted) {
-      context.read<AlarmProvider>().setAlertRadius(_alertRadius);
-      await context.read<AlarmProvider>().startTracking(trip);
+      // Se for viagem agendada, apenas salva e volta
+      if (_scheduleTrip && _scheduledDateTime != null && _scheduledDateTime!.isAfter(DateTime.now())) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Viagem agendada para ${_formatDateTime(_scheduledDateTime!)}'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        Navigator.of(context).pop();
+      } else {
+        // Se for viagem imediata, inicia tracking
+        context.read<AlarmProvider>().setAlertRadius(_alertRadius);
+        await context.read<AlarmProvider>().startTracking(trip);
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const TrackingScreen()),
-      );
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const TrackingScreen()),
+        );
+      }
     }
 
     setState(() => _isLoading = false);
@@ -188,11 +218,15 @@ class _NewTripScreenState extends State<NewTripScreen> {
                         _buildDestinationCard(),
                         if (_searchResults.isNotEmpty) _buildSearchResults(),
                         const SizedBox(height: 20),
+                        _buildTicketPriceCard(),
+                        const SizedBox(height: 20),
+                        _buildScheduleTripCard(),
+                        const SizedBox(height: 20),
                         _buildAlertRadiusCard(),
                         const SizedBox(height: 32),
                         GradientButton(
-                          text: 'Iniciar Viagem',
-                          icon: Icons.play_arrow,
+                          text: _scheduleTrip ? 'Agendar Viagem' : 'Iniciar Viagem',
+                          icon: _scheduleTrip ? Icons.event : Icons.play_arrow,
                           isLoading: _isLoading,
                           onPressed: _startTrip,
                         ),
@@ -414,6 +448,252 @@ class _NewTripScreenState extends State<NewTripScreen> {
             onTap: () => _selectDestination(result),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildTicketPriceCard() {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.confirmation_number,
+                  color: AppColors.success,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Valor da Passagem',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _addTicketPrice,
+                onChanged: (value) {
+                  setState(() {
+                    _addTicketPrice = value;
+                    if (!value) {
+                      _ticketPriceController.clear();
+                    }
+                  });
+                },
+                activeColor: AppColors.success,
+              ),
+            ],
+          ),
+          if (_addTicketPrice) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Registre o valor da passagem como despesa inicial (opcional)',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            StyledTextField(
+              controller: _ticketPriceController,
+              labelText: 'Valor (R\$)',
+              hintText: 'Ex: 45,00',
+              prefixIcon: Icons.attach_money,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              validator: (value) {
+                if (_addTicketPrice && (value == null || value.isEmpty)) {
+                  return 'Digite o valor da passagem';
+                }
+                return null;
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    final day = dateTime.day.toString().padLeft(2, '0');
+    final month = dateTime.month.toString().padLeft(2, '0');
+    final year = dateTime.year;
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    return '$day/$month/$year às $hour:$minute';
+  }
+
+  Future<void> _selectScheduleDateTime() async {
+    final now = DateTime.now();
+    
+    // Seleciona a data
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _scheduledDateTime ?? now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.babyBlue,
+              onPrimary: AppColors.midnightBlue,
+              surface: AppColors.cardDark,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (date == null || !mounted) return;
+
+    // Seleciona a hora
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_scheduledDateTime ?? now),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.babyBlue,
+              onPrimary: AppColors.midnightBlue,
+              surface: AppColors.cardDark,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (time == null || !mounted) return;
+
+    setState(() {
+      _scheduledDateTime = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+    });
+  }
+
+  Widget _buildScheduleTripCard() {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.event,
+                  color: AppColors.info,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Agendar Viagem',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _scheduleTrip,
+                onChanged: (value) {
+                  setState(() {
+                    _scheduleTrip = value;
+                    if (!value) {
+                      _scheduledDateTime = null;
+                    }
+                  });
+                },
+                activeColor: AppColors.info,
+              ),
+            ],
+          ),
+          if (_scheduleTrip) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Planeje sua viagem para uma data e hora futura',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: _selectScheduleDateTime,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceDark.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _scheduledDateTime != null
+                        ? AppColors.info.withValues(alpha: 0.5)
+                        : AppColors.navyBlue,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_today,
+                      color: _scheduledDateTime != null
+                          ? AppColors.info
+                          : AppColors.textMuted,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _scheduledDateTime != null
+                            ? _formatDateTime(_scheduledDateTime!)
+                            : 'Selecionar data e hora',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: _scheduledDateTime != null
+                              ? AppColors.textPrimary
+                              : AppColors.textMuted,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      color: AppColors.textMuted,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

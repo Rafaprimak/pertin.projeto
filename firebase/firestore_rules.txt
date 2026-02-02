@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Função auxiliar para verificar se o usuário está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Função auxiliar para verificar se o usuário é o dono do documento
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // ========================================
+    // REGRAS PARA COLEÇÃO DE USUÁRIOS
+    // Estrutura: users/{userId}
+    // ========================================
+    match /users/{userId} {
+      // Usuário pode ler/escrever apenas seu próprio documento
+      allow read, write: if isOwner(userId);
+      
+      // ========================================
+      // SUBCOLEÇÃO DE VIAGENS
+      // Estrutura: users/{userId}/trips/{tripId}
+      // ========================================
+      match /trips/{tripId} {
+        // Usuário pode ler/escrever suas próprias viagens
+        allow read, write: if isOwner(userId);
+        
+        // ========================================
+        // SUBCOLEÇÃO DE DESPESAS
+        // Estrutura: users/{userId}/trips/{tripId}/expenses/{expenseId}
+        // ========================================
+        match /expenses/{expenseId} {
+          // Usuário pode ler/escrever suas próprias despesas
+          allow read, write: if isOwner(userId);
+        }
+      }
+    }
+  }
+}

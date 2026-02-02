@@ -4,17 +4,35 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:pertin/firebase_options.dart';
 import 'package:pertin/providers/trip_provider.dart';
 import 'package:pertin/providers/user_provider.dart';
 import 'package:pertin/providers/alarm_provider.dart';
 import 'package:pertin/screens/splash_screen.dart';
+import 'package:pertin/services/encryption_service.dart';
 import 'package:pertin/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Inicializa o Firebase
-  await Firebase.initializeApp();
+  // Inicializa o Firebase com as opções corretas para cada plataforma
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('Firebase inicializado com sucesso!');
+  } catch (e) {
+    debugPrint('Erro ao inicializar Firebase: $e');
+    // Continua mesmo com erro do Firebase para não travar o app
+  }
+  
+  // Inicializa o serviço de criptografia
+  try {
+    await EncryptionService.instance.init();
+    debugPrint('EncryptionService inicializado com sucesso!');
+  } catch (e) {
+    debugPrint('Erro ao inicializar EncryptionService: $e');
+  }
   
   // Inicializa dados de formatação de data para português
   await initializeDateFormatting('pt_BR', null);

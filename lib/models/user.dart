@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 class UserModel {
-  final int? id;
+  final String? id;
   final String name;
   final String email;
   final String? passwordHash;
@@ -43,7 +43,7 @@ class UserModel {
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
-      id: map['id'],
+      id: map['id']?.toString(),
       name: map['name'] ?? '',
       email: map['email'] ?? '',
       passwordHash: map['passwordHash'],
@@ -55,7 +55,7 @@ class UserModel {
   }
 
   UserModel copyWith({
-    int? id,
+    String? id,
     String? name,
     String? email,
     String? passwordHash,

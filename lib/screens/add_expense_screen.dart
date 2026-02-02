@@ -7,7 +7,7 @@ import 'package:pertin/widgets/common_widgets.dart';
 import 'package:pertin/theme/app_colors.dart';
 
 class AddExpenseScreen extends StatefulWidget {
-  final int tripId;
+  final String tripId;
 
   const AddExpenseScreen({super.key, required this.tripId});
 

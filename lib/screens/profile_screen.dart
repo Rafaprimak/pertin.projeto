@@ -1,16 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:pertin/models/trip.dart';
 import 'package:pertin/providers/user_provider.dart';
 import 'package:pertin/providers/trip_provider.dart';
+import 'package:pertin/providers/alarm_provider.dart';
 import 'package:pertin/screens/onboarding_screen.dart';
+import 'package:pertin/services/alarm_service.dart';
 import 'package:pertin/widgets/starry_sky_background.dart';
 import 'package:pertin/widgets/sleepy_bus_logo.dart';
 import 'package:pertin/widgets/common_widgets.dart';
 import 'package:pertin/theme/app_colors.dart';
 import 'package:intl/intl.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool _isTestingAlarm = false;
 
   @override
   Widget build(BuildContext context) {
@@ -197,6 +212,31 @@ class ProfileScreen extends StatelessWidget {
                   activeTrackColor: AppColors.babyBlue.withValues(alpha: 0.5),
                   activeThumbColor: AppColors.babyBlue,
                 ),
+              ),
+              _buildDivider(),
+              _buildSettingItem(
+                icon: Icons.alarm,
+                title: 'Testar Alarme',
+                trailing: _isTestingAlarm
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.babyBlue,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.play_circle_outline,
+                        color: AppColors.babyBlue,
+                      ),
+                onTap: _isTestingAlarm ? null : () => _testAlarm(context),
+              ),
+              _buildDivider(),
+              _buildSettingItem(
+                icon: Icons.file_download_outlined,
+                title: 'Exportar Viagens (CSV)',
+                onTap: () => _exportTripsToCSV(context),
               ),
             ],
           ),
@@ -395,5 +435,312 @@ class ProfileScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _testAlarm(BuildContext context) async {
+    setState(() => _isTestingAlarm = true);
+    
+    try {
+      await AlarmService.instance.playAlarm();
+      
+      // Mostra dialog para parar o alarme
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            backgroundColor: AppColors.cardDark,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.alarm, color: AppColors.warning),
+                SizedBox(width: 12),
+                Text(
+                  'Alarme de Teste',
+                  style: TextStyle(color: AppColors.textPrimary),
+                ),
+              ],
+            ),
+            content: const Text(
+              'O alarme está tocando. Clique em "Parar" para encerrar o teste.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () async {
+                  await AlarmService.instance.stopAlarm();
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  foregroundColor: AppColors.white,
+                ),
+                child: const Text('Parar Alarme'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao testar alarme: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isTestingAlarm = false);
+    }
+  }
+
+  Future<void> _exportTripsToCSV(BuildContext context) async {
+    final tripProvider = context.read<TripProvider>();
+    final trips = tripProvider.trips;
+    
+    if (trips.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nenhuma viagem para exportar'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    // Na web, exportação de arquivos não é suportada da mesma forma
+    if (kIsWeb) {
+      await _exportToClipboard(context, trips);
+      return;
+    }
+
+    try {
+      final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+      final currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+      
+      // Cabeçalho do CSV de viagens
+      final StringBuffer csvTrips = StringBuffer();
+      csvTrips.writeln('ID,Nome,Origem,Destino,Status,Data Início,Data Fim,Total Gastos');
+      
+      for (final trip in trips) {
+        final startTime = dateFormat.format(trip.startTime);
+        final endTime = trip.endTime != null ? dateFormat.format(trip.endTime!) : '';
+        final totalExpenses = currencyFormat.format(trip.totalExpenses);
+        
+        // Escapa campos com vírgulas ou aspas
+        final name = _escapeCsvField(trip.name);
+        final origin = _escapeCsvField(trip.originName);
+        final destination = _escapeCsvField(trip.destinationName);
+        
+        csvTrips.writeln('${trip.id},$name,$origin,$destination,${trip.status.displayName},$startTime,$endTime,$totalExpenses');
+      }
+
+      // Cabeçalho do CSV de despesas
+      final StringBuffer csvExpenses = StringBuffer();
+      csvExpenses.writeln('Viagem,Descrição,Categoria,Valor,Data');
+      
+      for (final trip in trips) {
+        for (final expense in trip.expenses) {
+          final tripName = _escapeCsvField(trip.name);
+          final description = _escapeCsvField(expense.description);
+          final amount = currencyFormat.format(expense.amount);
+          final date = dateFormat.format(expense.date);
+          
+          csvExpenses.writeln('$tripName,$description,${expense.category.displayName},$amount,$date');
+        }
+      }
+
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      
+      // Tentar salvar na pasta de Downloads (Android) ou Documents (iOS)
+      Directory? saveDirectory;
+      String savedPath = '';
+      
+      if (Platform.isAndroid) {
+        // No Android, salvar em Downloads via pasta externa
+        final externalDir = await getExternalStorageDirectory();
+        if (externalDir != null) {
+          // Navegar para a pasta Downloads do armazenamento interno
+          final downloadsPath = '${externalDir.parent.parent.parent.parent.path}/Download';
+          final downloadsDir = Directory(downloadsPath);
+          if (await downloadsDir.exists()) {
+            saveDirectory = downloadsDir;
+            savedPath = 'Downloads';
+          }
+        }
+      } else if (Platform.isIOS) {
+        // No iOS, usar Documents
+        saveDirectory = await getApplicationDocumentsDirectory();
+        savedPath = 'Arquivos';
+      }
+      
+      // Fallback para diretório temporário se não conseguir acessar Downloads
+      if (saveDirectory == null) {
+        saveDirectory = await getTemporaryDirectory();
+        savedPath = 'temporário';
+      }
+      
+      final tripsFile = File('${saveDirectory.path}/pertin_viagens_$timestamp.csv');
+      final expensesFile = File('${saveDirectory.path}/pertin_despesas_$timestamp.csv');
+      
+      await tripsFile.writeAsString(csvTrips.toString());
+      await expensesFile.writeAsString(csvExpenses.toString());
+
+      if (mounted) {
+        // Mostrar diálogo de sucesso com opções
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.surfaceDark,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Icon(Icons.check_circle, color: AppColors.success, size: 28),
+                const SizedBox(width: 12),
+                const Text('Arquivos salvos!', style: TextStyle(color: Colors.white)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Os arquivos CSV foram salvos na pasta $savedPath:',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardDark,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.description, size: 16, color: AppColors.babyBlue),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'pertin_viagens_$timestamp.csv',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(Icons.receipt_long, size: 16, color: AppColors.starYellow),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'pertin_despesas_$timestamp.csv',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Fechar'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  // Compartilhar arquivos como alternativa
+                  await Share.shareXFiles(
+                    [XFile(tripsFile.path), XFile(expensesFile.path)],
+                    subject: 'Dados de Viagens - Pertin',
+                    text: 'Exportação de viagens e despesas do app Pertin',
+                  );
+                },
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text('Compartilhar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.babyBlue,
+                  foregroundColor: AppColors.midnightBlue,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro ao exportar CSV: $e');
+      if (mounted) {
+        // Tenta exportar para área de transferência como fallback
+        await _exportToClipboard(context, trips);
+      }
+    }
+  }
+
+  Future<void> _exportToClipboard(BuildContext context, List<Trip> trips) async {
+    try {
+      final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+      final currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+      
+      final StringBuffer csv = StringBuffer();
+      csv.writeln('=== VIAGENS ===');
+      csv.writeln('ID\tNome\tOrigem\tDestino\tStatus\tData Início\tData Fim\tTotal Gastos');
+      
+      for (final trip in trips) {
+        final startTime = dateFormat.format(trip.startTime);
+        final endTime = trip.endTime != null ? dateFormat.format(trip.endTime!) : '';
+        final totalExpenses = currencyFormat.format(trip.totalExpenses);
+        
+        csv.writeln('${trip.id}\t${trip.name}\t${trip.originName}\t${trip.destinationName}\t${trip.status.displayName}\t$startTime\t$endTime\t$totalExpenses');
+      }
+      
+      csv.writeln('\n=== DESPESAS ===');
+      csv.writeln('Viagem\tDescrição\tCategoria\tValor\tData');
+      
+      for (final trip in trips) {
+        for (final expense in trip.expenses) {
+          final amount = currencyFormat.format(expense.amount);
+          final date = dateFormat.format(expense.date);
+          csv.writeln('${trip.name}\t${expense.description}\t${expense.category.displayName}\t$amount\t$date');
+        }
+      }
+
+      await Clipboard.setData(ClipboardData(text: csv.toString()));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Dados copiados para a área de transferência! Cole em uma planilha.'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao exportar: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  String _escapeCsvField(String field) {
+    if (field.contains(',') || field.contains('"') || field.contains('\n')) {
+      return '"${field.replaceAll('"', '""')}"';
+    }
+    return field;
   }
 }

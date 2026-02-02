@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pertin/providers/alarm_provider.dart';
+import 'package:pertin/providers/trip_provider.dart';
 import 'package:pertin/screens/alarm_screen.dart';
+import 'package:pertin/screens/add_expense_screen.dart';
 import 'package:pertin/widgets/starry_sky_background.dart';
 import 'package:pertin/widgets/sleepy_bus_logo.dart';
 import 'package:pertin/widgets/common_widgets.dart';
 import 'package:pertin/theme/app_colors.dart';
+import 'package:intl/intl.dart';
 import 'dart:math' as math;
 
 class TrackingScreen extends StatefulWidget {
@@ -80,6 +83,7 @@ class _TrackingScreenState extends State<TrackingScreen>
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
+              foregroundColor: AppColors.midnightBlue,
             ),
             child: const Text('Sim, cancelar'),
           ),
@@ -114,6 +118,8 @@ class _TrackingScreenState extends State<TrackingScreen>
                           _buildDistanceIndicator(alarmProvider),
                           const SizedBox(height: 32),
                           _buildTripInfo(trip),
+                          const SizedBox(height: 24),
+                          _buildExpensesCard(trip),
                           const SizedBox(height: 24),
                           _buildSleepModeCard(),
                           const SizedBox(height: 24),
@@ -268,7 +274,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     );
   }
 
-  Widget _buildTripInfo(trip) {
+  Widget _buildTripInfo(Trip trip) {
     return GlassCard(
       child: Column(
         children: [
@@ -411,16 +417,162 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   Widget _buildCancelButton() {
-    return OutlinedButton.icon(
+    return ElevatedButton.icon(
       onPressed: _stopTracking,
-      icon: const Icon(Icons.close, color: AppColors.error),
-      label: const Text(
-        'Cancelar Viagem',
-        style: TextStyle(color: AppColors.error),
-      ),
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: AppColors.error),
+      icon: const Icon(Icons.close),
+      label: const Text('Cancelar Viagem'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.error,
+        foregroundColor: AppColors.midnightBlue,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _buildExpensesCard(Trip trip) {
+    final currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+    
+    // Busca a viagem atualizada do provider para sincronização
+    final tripProvider = context.watch<TripProvider>();
+    final Trip updatedTrip = tripProvider.getTripById(trip.id) ?? trip;
+    
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.starYellow.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.account_balance_wallet,
+                        color: AppColors.starYellow,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Flexible(
+                      child: Text(
+                        'Gastos da Viagem',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    currencyFormat.format(updatedTrip.totalExpenses),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.starYellow,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (updatedTrip.expenses.isEmpty)
+            Center(
+              child: Text(
+                'Nenhum gasto registrado',
+                style: TextStyle(
+                  color: AppColors.textMuted.withOpacity(0.7),
+                ),
+              ),
+            )
+          else
+            ...updatedTrip.expenses.take(3).map((expense) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Text(
+                      expense.category.icon,
+                      style: const TextStyle(fontSize: 18),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        expense.description,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      flex: 0,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          currencyFormat.format(expense.amount),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          if (updatedTrip.expenses.length > 3)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '+${updatedTrip.expenses.length - 3} gastos...',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textMuted.withOpacity(0.7),
+                ),
+              ),
+            ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddExpenseScreen(tripId: updatedTrip.id!),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Adicionar Gasto'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.babyBlue,
+                side: const BorderSide(color: AppColors.babyBlue),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

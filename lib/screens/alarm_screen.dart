@@ -71,7 +71,7 @@ class _AlarmScreenState extends State<AlarmScreen>
     }
   }
 
-  void _showTripCompletedDialog(int tripId) {
+  void _showTripCompletedDialog(String tripId) {
     showDialog(
       context: context,
       barrierDismissible: false,
